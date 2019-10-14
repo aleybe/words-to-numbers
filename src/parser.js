@@ -2,9 +2,11 @@
 import {
   PUNCTUATION,
   NUMBER_WORDS,
+  MULTIPLIER,
   UNIT_KEYS,
   TEN_KEYS,
   MAGNITUDE_KEYS,
+  MULTIPLIER_KEYS,
   TOKEN_TYPE,
   JOINERS,
   DECIMALS,
@@ -17,6 +19,7 @@ const SKIP = 0;
 const ADD = 1;
 const START_NEW_REGION = 2;
 const NOPE = 3;
+const MULT = 4;
 
 const canAddTokenToEndOfSubRegion = (subRegion, currentToken, { impliedHundreds }) => {
   const { tokens } = subRegion;
@@ -150,6 +153,8 @@ const checkIfTokenFitsRegion = (region, token, options) => {
   if (isPunctuation) return SKIP;
   const isJoiner = JOINERS.includes(token.lowerCaseValue);
   if (isJoiner) return SKIP;
+  const isMultiplier = MULTIPLIER_KEYS.includes(token.lowerCaseValue);
+  if (isMultiplier) return MULT;
   if (isDecimal && !region.hasDecimal) {
     return ADD;
   }
@@ -175,6 +180,9 @@ const matchRegions = (tokens, options) => {
 
   let i = 0;
   let currentRegion;
+  let currentMultiple;
+  let multiRegion;
+  let previousRegion;
   const tokensCount = tokens.length;
   while (i < tokensCount) {
     const token = tokens[i];
@@ -193,7 +201,71 @@ const matchRegions = (tokens, options) => {
         }
         break;
       }
+      case MULT: {
+        // Apply multiple 
+        console.log("Here")
+        console.log("MultiFactor = ", MULTIPLIER[token.value]); // Multiplication Factor
+
+        currentMultiple = MULTIPLIER[token.value];
+        // Collect token length data
+        multiRegion = {
+          start: token.start,
+          end: token.end,
+          tokens: [token]
+        }
+        break;
+      }
       case START_NEW_REGION: {
+
+        if (currentMultiple) {
+          let multiArray = [];
+          for (let i = 0; i < currentMultiple; i++) {
+
+            // Need to replace the first word (the multiplier)
+            if (i == 0) {
+              currentRegion = {
+                start: multiRegion.start,
+                end: multiRegion.end + 1,
+                tokens: [token]
+              }
+            }
+
+            else if (i > 1) {
+              // In the triples or larger
+              // Add an offset to every new region
+
+              let startPos = previousRegion.end + 2;
+              let endPos = (token.end - token.start) + previousRegion.end;
+
+              currentRegion = {
+                start: startPos,
+                end: endPos,
+                tokens: [token]
+              }
+            }
+
+            else {
+              // In the multi wave.. 
+
+              currentRegion = {
+                start: token.start,
+                end: token.end,
+                tokens: [token],
+              };
+            }
+            regions.push(currentRegion);
+            previousRegion = currentRegion;
+          }
+
+          if (token.type === TOKEN_TYPE.DECIMAL) {
+            currentRegion.hasDecimal = true;
+          }
+
+          currentMultiple = null;
+          break;
+        }
+
+        // No multiple here 
         currentRegion = {
           start: token.start,
           end: token.end,
@@ -221,6 +293,7 @@ const getTokenType = (chunk) => {
   if (UNIT_KEYS.includes(chunk.toLowerCase())) return TOKEN_TYPE.UNIT;
   if (TEN_KEYS.includes(chunk.toLowerCase())) return TOKEN_TYPE.TEN;
   if (MAGNITUDE_KEYS.includes(chunk.toLowerCase())) return TOKEN_TYPE.MAGNITUDE;
+  if (MULTIPLIER_KEYS.includes(chunk.toLowerCase())) return TOKEN_TYPE.MULTIPLIER;
   if (DECIMALS.includes(chunk.toLowerCase())) return TOKEN_TYPE.DECIMAL;
 };
 
